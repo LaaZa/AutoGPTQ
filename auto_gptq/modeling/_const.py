@@ -21,6 +21,7 @@ SUPPORTED_MODELS = [
     "baichuan",
     "internlm",
     "qwen",
+    "fuyu",
 ]
 if compare_transformers_version("v4.28.0", op="ge"):
     SUPPORTED_MODELS.append("llama")
