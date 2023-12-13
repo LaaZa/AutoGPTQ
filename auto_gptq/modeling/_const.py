@@ -21,6 +21,9 @@ SUPPORTED_MODELS = [
     "baichuan",
     "internlm",
     "qwen",
+    "xverse",
+    "deci_lm",
+    "stablelm_epoch",
     "fuyu",
 ]
 if compare_transformers_version("v4.28.0", op="ge"):
@@ -29,6 +32,7 @@ if compare_transformers_version("v4.33.0", op="ge"):
     SUPPORTED_MODELS.append("falcon")
 if compare_transformers_version("v4.34.0", op="ge"):
     SUPPORTED_MODELS.append("mistral")
+    SUPPORTED_MODELS.append("Yi")
 
 
 EXLLAMA_DEFAULT_MAX_INPUT_LENGTH = 2048
