@@ -18,4 +18,5 @@ from .yi import *
 from .xverse import *
 from .decilm import *
 from .stablelmepoch import *
+from .mixtral import *
 from .fuyu import *

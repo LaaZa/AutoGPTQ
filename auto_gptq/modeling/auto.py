@@ -21,6 +21,7 @@ from .yi import YiGPTQForCausalLM
 from .xverse import XverseGPTQForCausalLM
 from .decilm import DeciLMGPTQForCausalLM
 from .stablelmepoch import StableLMEpochGPTQForCausalLM
+from .mixtral import MixtralGPTQForCausalLM
 from .fuyu import FuyuGPTQForCausalLM
 
 GPTQ_CAUSAL_LM_MODEL_MAP = {
@@ -44,6 +45,7 @@ GPTQ_CAUSAL_LM_MODEL_MAP = {
     "xverse": XverseGPTQForCausalLM,
     "deci_lm": DeciLMGPTQForCausalLM,
     "stablelm_epoch": StableLMEpochGPTQForCausalLM,
+    "mixtral": MixtralGPTQForCausalLM,
     "fuyu": FuyuGPTQForCausalLM,
 }
 
