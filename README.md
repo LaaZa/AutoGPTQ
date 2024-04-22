@@ -1,5 +1,5 @@
 <h1 align="center">AutoGPTQ</h1>
-<p align="center">An easy-to-use LLMs quantization package with user-friendly apis, based on GPTQ algorithm.</p>
+<p align="center">An easy-to-use LLM quantization package with user-friendly APIs, based on GPTQ algorithm (weight-only quantization).</p>
 <p align="center">
     <a href="https://github.com/PanQiWei/AutoGPTQ/releases">
         <img alt="GitHub release" src="https://img.shields.io/github/release/PanQiWei/AutoGPTQ.svg">
@@ -15,15 +15,10 @@
     </p>
 </h4>
 
-*<center>📣 Long time no see! 👋 Architecture upgrade, performance optimization and more new features will come in July and August, stay tune! 🥂</center>*
-
 ## News or Update
 
-- 2023-08-06 - (Update) - Support exllama's q4 CUDA kernel to have at least 1.3x speed up for int4 quantized models when doing inference.
-- 2023-08-04 - (Update) - Support RoCm so that AMD GPU users can use auto-gptq with CUDA extensions.
-- 2023-07-26 - (Update) - An elegant [PPL benchmark script](examples/benchmark/perplexity.py) to get results that can be fairly compared with other libraries such as `llama.cpp`.
-- 2023-06-05 - (Update) - Integrate with 🤗 peft to use gptq quantized model to train adapters, support LoRA, AdaLoRA, AdaptionPrompt, etc.
-- 2023-05-30 - (Update) - Support download/upload quantized model from/to 🤗 Hub.
+- 2024-02-15 - (News) - AutoGPTQ 0.7.0 is released, with [Marlin](https://github.com/IST-DASLab/marlin) int4*fp16 matrix multiplication kernel support, with the argument `use_marlin=True` when loading models.
+- 2023-08-23 - (News) - 🤗 Transformers, optimum and peft have integrated `auto-gptq`, so now running and training GPTQ models can be more available to everyone! See [this blog](https://huggingface.co/blog/gptq-integration) and it's resources for more details!
 
 *For more histories please turn to [here](docs/NEWS_OR_UPDATE.md)*
 
@@ -51,62 +46,48 @@ For perplexity comparison, you can turn to [here](https://github.com/qwopqwop200
 
 ## Installation
 
-### Quick Installation
-You can install the latest stable release of AutoGPTQ from pip:
+AutoGPTQ is available on Linux and Windows only. You can install the latest stable release of AutoGPTQ from pip with pre-built wheels:
 
-```shell
-pip install auto-gptq
-```
+| CUDA/ROCm version | Installation                                                                                      | Built against PyTorch |
+|-------------------|---------------------------------------------------------------------------------------------------|-----------------------|
+| CUDA 11.8         | `pip install auto-gptq --no-build-isolation --extra-index-url https://huggingface.github.io/autogptq-index/whl/cu118/`   | 2.2.1+cu118           |
+| CUDA 12.1         | `pip install auto-gptq --no-build-isolation`                                                                            | 2.2.1+cu121           |
+| ROCm 5.7          | `pip install auto-gptq --no-build-isolation --extra-index-url https://huggingface.github.io/autogptq-index/whl/rocm573/` | 2.2.1+rocm5.7               |
 
-Start from v0.2.0, you can download pre-build wheel that satisfied your environment setup from each version's release assets and install it to skip building stage for the fastest installation speed. For example:
-```shell
-# firstly, cd the directory where the wheel saved, then execute command below
-pip install auto_gptq-0.2.0+cu118-cp310-cp310-linux_x86_64.whl # install v0.2.0 auto_gptq pre-build wheel for linux in an environment whose python=3.10 and cuda=11.8
-```
+AutoGPTQ can be installed with the Triton dependency with `pip install auto-gptq[triton] --no-build-isolation` in order to be able to use the Triton backend (currently only supports linux, no 3-bits quantization).
 
-#### disable cuda extensions
-By default, cuda extensions will be installed when `torch` and `cuda` is already installed in your machine, if you don't want to use them, using:
-```shell
-BUILD_CUDA_EXT=0 pip install auto-gptq
-```
-And to make sure `autogptq_cuda` is not ever in your virtual environment, run:
-```shell
-pip uninstall autogptq_cuda -y
-```
+For older AutoGPTQ, please refer to [the previous releases installation table](docs/INSTALLATION.md).
 
-#### to support triton speedup
-To integrate with `triton`, using:
-> warning: currently triton only supports linux; 3-bit quantization is not supported when using triton
-
-```shell
-pip install auto-gptq[triton]
-```
+On NVIDIA systems, AutoGPTQ does not support [Maxwell or lower](https://qiita.com/uyuni/items/733a93b975b524f89f46) GPUs.
 
 ### Install from source
-<details>
-<summary>click to see details</summary>
 
 Clone the source code:
-```shell
+```bash
 git clone https://github.com/PanQiWei/AutoGPTQ.git && cd AutoGPTQ
 ```
-Then, install from source:
-```shell
-pip install .
+
+A few packages are required in order to build from source: `pip install numpy gekko pandas`.
+
+Then, install locally from source:
+```bash
+pip install -vvv --no-build-isolation -e .
 ```
-Like quick installation, you can also set `BUILD_CUDA_EXT=0` to disable pytorch extension building.
+You can set `BUILD_CUDA_EXT=0` to disable pytorch extension building, but this is **strongly discouraged** as AutoGPTQ then falls back on a slow python implementation.
 
-Use `.[triton]` if you want to integrate with triton and it's available on your operating system.
+As a last resort, if the above command fails, you can try `python setup.py install`.
 
-To install from source for AMD GPUs supporting RoCm, please specify the `ROCM_VERSION` environment variable. The compilation can be speeded up by specifying the `PYTORCH_ROCM_ARCH` variable ([reference](https://github.com/pytorch/pytorch/blob/7b73b1e8a73a1777ebe8d2cd4487eb13da55b3ba/setup.py#L132)), for example `gfx90a` for MI200 series devices. Example:
+#### On ROCm systems
 
+To install from source for AMD GPUs supporting ROCm, please specify the `ROCM_VERSION` environment variable. Example:
+
+```bash
+ROCM_VERSION=5.6 pip install -vvv --no-build-isolation -e .
 ```
-ROCM_VERSION=5.6 pip install .
-```
 
-For RoCm systems, the packages `rocsparse-dev`, `hipsparse-dev`, `rocthrust-dev`, `rocblas-dev` and `hipblas-dev` are required to build.
+The compilation can be speeded up by specifying the `PYTORCH_ROCM_ARCH` variable ([reference](https://github.com/pytorch/pytorch/blob/7b73b1e8a73a1777ebe8d2cd4487eb13da55b3ba/setup.py#L132)) in order to build for a single target device, for example `gfx90a` for MI200 series devices.
 
-</details>
+For ROCm systems, the packages `rocsparse-dev`, `hipsparse-dev`, `rocthrust-dev`, `rocblas-dev` and `hipblas-dev` are required to build.
 
 ## Quick Tour
 
@@ -334,9 +315,17 @@ Tests can be run with:
 pytest tests/ -s
 ```
 
+## FAQ
+
+### Which kernel is used by default?
+
+AutoGPTQ defaults to using exllamav2 int4*fp16 kernel for matrix multiplication.
+
+### How to use Marlin kernel?
+
+Marlin is an optimized int4 * fp16 kernel was recently proposed at https://github.com/IST-DASLab/marlin. This is integrated in AutoGPTQ when loading a model with `use_marlin=True`. This kernel is available only on devices with compute capability 8.0 or 8.6 (Ampere GPUs).
+
 ## Acknowledgement
-- Specially thanks **Elias Frantar**, **Saleh Ashkboos**, **Torsten Hoefler** and **Dan Alistarh** for proposing **GPTQ** algorithm and open source the [code](https://github.com/IST-DASLab/gptq).
-- Specially thanks **qwopqwop200**, for code in this project that relevant to quantization are mainly referenced from [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa/tree/cuda).
-
-
-[![Star History Chart](https://api.star-history.com/svg?repos=PanQiwei/AutoGPTQ&type=Date)](https://star-history.com/#PanQiWei/AutoGPTQ&Date)
+- Special thanks **Elias Frantar**, **Saleh Ashkboos**, **Torsten Hoefler** and **Dan Alistarh** for proposing **GPTQ** algorithm and open source the [code](https://github.com/IST-DASLab/gptq), and for releasing [Marlin kernel](https://github.com/IST-DASLab/marlin) for mixed precision computation.
+- Special thanks **qwopqwop200**, for code in this project that relevant to quantization are mainly referenced from [GPTQ-for-LLaMa](https://github.com/qwopqwop200/GPTQ-for-LLaMa/tree/cuda).
+- Special thanks to **turboderp**, for releasing [Exllama](https://github.com/turboderp/exllama) and [Exllama v2](https://github.com/turboderp/exllamav2) libraries with efficient mixed precision kernels.
