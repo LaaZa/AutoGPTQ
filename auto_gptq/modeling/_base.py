@@ -188,7 +188,7 @@ class BaseGPTQForCausalLM(nn.Module, PushToHubMixin):
             raise ValueError(f"Unsupported quantization operation for quant method: {self.quantize_config.quant_method}")
 
         # alert users to limit threads so packing performance does not regress by up to ~100x
-        thread_warning = """If you have not already done so, please inject the following code at the very top of your 
+        thread_warning = """If you have not already done so, please inject the following code at the very top of your
 quantization script so the packing stage is optimized for speed. Using too many cores may reduce packing performance.
 ----
 import os

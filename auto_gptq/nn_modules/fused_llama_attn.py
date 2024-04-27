@@ -6,9 +6,10 @@ from torch.nn import functional as F
 from transformers.models.llama.modeling_llama import (
     LlamaAttention,
     apply_rotary_pos_emb,
+    repeat_kv,
 )
 
-from ..utils.import_utils import compare_pytorch_version, dynamically_import_QuantLinear
+from ..utils.import_utils import compare_pytorch_version, compare_transformers_version, dynamically_import_QuantLinear
 from ._fused_base import FusedBaseAttentionModule
 
 
@@ -39,7 +40,7 @@ class FusedLlamaAttentionForQuantizedModel(FusedBaseAttentionModule):
                 f" and `num_heads`: {self.num_heads})."
             )
         if self.config.pretraining_tp > 1:
-            raise NotImplementedError(f"pretraining_tp of 2 or more is currently not supported.")
+            raise NotImplementedError("pretraining_tp of 2 or more is currently not supported.")
 
         if len(qkv_proj) == 1:
             self.qkv_mode = 'qkv'
@@ -57,9 +58,9 @@ class FusedLlamaAttentionForQuantizedModel(FusedBaseAttentionModule):
     def forward(
         self,
         hidden_states,
+        past_key_value=None,
         attention_mask=None,
         position_ids=None,
-        past_key_value=None,
         output_attentions=False,
         use_cache=False,
         **kwargs,
@@ -74,7 +75,7 @@ class FusedLlamaAttentionForQuantizedModel(FusedBaseAttentionModule):
         elif self.qkv_mode == 'q,kv':
             query_states = self.q_proj(hidden_states)
             kv_states = self.kv_proj(hidden_states)
-            key_states, value_states = torch.split(kv_states, self.hidden_size, dim=2)
+            key_states, value_states = torch.split(kv_states, self.hidden_size // 4, dim=2)
         query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
         key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
@@ -89,7 +90,11 @@ class FusedLlamaAttentionForQuantizedModel(FusedBaseAttentionModule):
                 )
             kv_seq_len += past_key_value.get_usable_length(kv_seq_len, self.layer_idx)
 
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+        if compare_transformers_version("4.38.0", op="ge"):
+            cos, sin = self.rotary_emb(value_states, position_ids)
+        else:
+            cos,  sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
+
         query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
         # [bsz, nh, t, hd]
 
@@ -185,8 +190,9 @@ class FusedLlamaAttentionForQuantizedModel(FusedBaseAttentionModule):
             # TODO: support it. The issue lies maybe in the line:
             # int groups = qzeros.size(0);
             # in exllama_ext.cpp
-            logger.warning(f"Exllama kernel does not support query/key/value fusion with act-order. Because of this, Fused attention is automatically disabled.")
-            return False
+            raise ValueError(
+                "Exllama kernel does not support query/key/value fusion with act-order. Because of this, Fused attention is automatically disabled."
+            )
 
         for name, m in model.named_modules():
             if not isinstance(m, LlamaAttention):
@@ -245,6 +251,7 @@ class FusedLlamaAttentionForQuantizedModel(FusedBaseAttentionModule):
                 qlinear_kwargs = {"trainable": trainable}
                 if (not desc_act or group_size == -1) and not use_triton:
                     qlinear_kwargs["use_cuda_fp16"] = use_cuda_fp16
+                qlinear_kwargs["weight_dtype"] = q_proj.scales.dtype
                 kv_layer = QuantLinear(*qlinear_args, **qlinear_kwargs)
                 kv_layer.qweight = qweights
                 kv_layer.qzeros = qzeros
@@ -252,16 +259,14 @@ class FusedLlamaAttentionForQuantizedModel(FusedBaseAttentionModule):
                 kv_layer.g_idx = g_idx
                 kv_layer.bias = bias
                 qkv_layers = [q_proj, kv_layer]
-            attn = cls(m.config, qkv_layers, m.o_proj, m.rotary_emb)
 
             # Introduced in Transformers 4.36
             layer_idx = None
             if hasattr(m, "layer_idx"):
                 layer_idx = m.layer_idx
             attn = cls(
-                m.hidden_size,
-                m.num_heads,
-                qkv_layer,
+                m.config,
+                qkv_layers,
                 m.o_proj,
                 m.rotary_emb,
                 layer_idx=layer_idx,
